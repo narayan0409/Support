@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Enterprise AI Chatbot
 
 This project provides a production-ready starter for an AI chatbot with a FastAPI backend, a React frontend shell, SQLAlchemy models, document upload and indexing, and a RAG-style chat flow.
@@ -42,3 +43,7 @@ npm run dev
 ## Notes
 
 Set `OPENAI_API_KEY` in the environment to enable OpenAI-backed responses.
+=======
+# Support
+Python Support Project
+>>>>>>> d5828fdab73d42e30601db5e4ee8b7dfd8d96a8a
