@@ -13,8 +13,13 @@ from backend.config.settings import settings
 class OpenAIConfigError(RuntimeError):
     pass
 
+_EMBEDDINGS_CACHE: dict[str, HuggingFaceEmbeddings] = {}
+
 def _get_embeddings() -> HuggingFaceEmbeddings:
-    return HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+    model_name = "all-MiniLM-L6-v2"
+    if model_name not in _EMBEDDINGS_CACHE:
+        _EMBEDDINGS_CACHE[model_name] = HuggingFaceEmbeddings(model_name=model_name)
+    return _EMBEDDINGS_CACHE[model_name]
 
 class RAGService:
     def __init__(self, user_id: int):

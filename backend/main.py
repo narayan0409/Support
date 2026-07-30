@@ -1,7 +1,5 @@
-import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.config.settings import settings
 from backend.database.models import Base

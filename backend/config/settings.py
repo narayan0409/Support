@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     OPENAI_MODEL: str = "gpt-4o-mini"
     CORS_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173"
 
-    model_config = SettingsConfigDict(env_file=".env", case_sensitive=True)
+    model_config = SettingsConfigDict(env_file=["backend/.env", ".env"], case_sensitive=True)
 
 
 settings = Settings()

@@ -1,5 +1,6 @@
 import { motion } from "framer-motion";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useAuthStore } from "../store/useAuthStore";
@@ -21,6 +22,9 @@ const suggestedPrompts = [
 
 export const ChatPage = () => {
   const token = useAuthStore((state) => state.token);
+  const setToken = useAuthStore((state) => state.setToken);
+  const navigate = useNavigate();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [sessions, setSessions] = useState(defaultSessions);
   const [activeSessionId, setActiveSessionId] = useState(defaultSessions[0].id);
   const [history, setHistory] = useState([{ role: "assistant", content: "Welcome to your workspace. Ask about code, docs, or uploaded files." }]);
@@ -28,7 +32,53 @@ export const ChatPage = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [hasRemoteSessions, setHasRemoteSessions] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadStatus, setUploadStatus] = useState<string | null>(null);
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !token) return;
+
+    setIsUploading(true);
+    setUploadStatus(`Uploading ${file.name}...`);
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const response = await fetch(`${API_BASE}/documents`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData
+      });
+
+      if (response.status === 401) {
+        setToken(null);
+        navigate("/login");
+        return;
+      }
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(payload?.detail || payload?.message || "Upload failed.");
+      }
+
+      const data = await response.json();
+      setUploadStatus(`✅ ${data.filename} uploaded & indexed. You can now ask questions about it.`);
+      setHistory((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: `📄 **${data.filename}** has been uploaded and indexed into the knowledge base. You can now ask questions about its content.`
+        }
+      ]);
+    } catch (error) {
+      setUploadStatus(`❌ Error: ${(error as Error).message}`);
+    } finally {
+      setIsUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
 
   useEffect(() => {
     const fetchHistory = async () => {
@@ -37,6 +87,11 @@ export const ChatPage = () => {
         const response = await fetch(`${API_BASE}/history`, {
           headers: { Authorization: `Bearer ${token}` }
         });
+        if (response.status === 401) {
+          setToken(null);
+          navigate("/login");
+          return;
+        }
         if (!response.ok) {
           throw new Error("Unable to load conversation history.");
         }
@@ -44,7 +99,6 @@ export const ChatPage = () => {
         if (data.length > 0) {
           setSessions(data.map((item: any) => ({ id: item.id, title: item.title })));
           setActiveSessionId(data[0].id);
-          setHasRemoteSessions(true);
         }
       } catch (error) {
         setErrorMessage((error as Error).message);
@@ -52,7 +106,7 @@ export const ChatPage = () => {
     };
 
     fetchHistory();
-  }, [token]);
+  }, [token, setToken, navigate]);
 
   useEffect(() => {
     const fetchMessages = async () => {
@@ -61,6 +115,11 @@ export const ChatPage = () => {
         const response = await fetch(`${API_BASE}/history/${activeSessionId}/messages`, {
           headers: { Authorization: `Bearer ${token}` }
         });
+        if (response.status === 401) {
+          setToken(null);
+          navigate("/login");
+          return;
+        }
         if (response.status === 404) {
           setHistory([{ role: "assistant", content: "Welcome to your workspace. Ask about code, docs, or uploaded files." }]);
           return;
@@ -76,7 +135,7 @@ export const ChatPage = () => {
     };
 
     fetchMessages();
-  }, [token, activeSessionId]);
+  }, [token, activeSessionId, setToken, navigate]);
 
   const filteredSessions = useMemo(
     () => sessions.filter((session) => session.title.toLowerCase().includes(search.toLowerCase())),
@@ -101,6 +160,12 @@ export const ChatPage = () => {
         },
         body: JSON.stringify({ session_id: activeSessionId, message: userText })
       });
+
+      if (response.status === 401) {
+        setToken(null);
+        navigate("/login");
+        return;
+      }
 
       if (!response.ok) {
         const payload = await response.json().catch(() => null);
@@ -159,6 +224,7 @@ export const ChatPage = () => {
   return (
     <main className="px-4 py-8 sm:px-6 lg:px-10">
       <div className="grid gap-6 xl:grid-cols-[280px_minmax(0,1fr)]">
+        {/* Sidebar */}
         <aside className="glass-panel flex flex-col gap-5 p-6">
           <div className="flex items-center justify-between gap-4">
             <div>
@@ -192,15 +258,40 @@ export const ChatPage = () => {
             ))}
           </div>
 
+          {/* Upload Section */}
+          <div className="rounded-3xl border border-white/10 bg-slate-950/80 p-5">
+            <p className="text-sm font-semibold text-white mb-3">📤 Train AI with files</p>
+            <p className="text-xs text-slate-400 mb-4">Upload PDF, TXT, CSV, XLSX or MD files to teach the AI your data.</p>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".pdf,.txt,.csv,.xlsx,.xls,.md"
+              onChange={handleFileUpload}
+              className="hidden"
+            />
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isUploading}
+              className="w-full rounded-3xl bg-gradient-to-r from-emerald-500 to-teal-500 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-emerald-500/20 transition hover:-translate-y-0.5 disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {isUploading ? "⏳ Uploading..." : "📎 Upload file"}
+            </button>
+            {uploadStatus && (
+              <p className={`mt-3 text-xs ${uploadStatus.includes("✅") ? "text-emerald-300" : uploadStatus.includes("❌") ? "text-red-300" : "text-slate-300"}`}>
+                {uploadStatus}
+              </p>
+            )}
+          </div>
+
           <div className="rounded-3xl border border-white/10 bg-slate-950/80 p-5">
             <p className="text-sm text-slate-400">Workspace metrics</p>
             <div className="mt-4 grid gap-3">
               <div className="rounded-3xl bg-slate-900/70 px-4 py-3 text-sm text-slate-200">Files indexed: 82</div>
               <div className="rounded-3xl bg-slate-900/70 px-4 py-3 text-sm text-slate-200">Model: GPT-5</div>
-            </div>
           </div>
         </aside>
 
+        {/* Main Chat Area */}
         <section className="flex flex-col gap-6">
           <div className="glass-panel rounded-[32px] border border-white/10 bg-slate-950/85 p-6 shadow-2xl shadow-slate-950/40">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -214,7 +305,6 @@ export const ChatPage = () => {
               </div>
           </div>
 
-          </div>
           <div className="glass-panel flex min-h-[560px] flex-col gap-5 rounded-[32px] border border-white/10 bg-slate-950/85 p-6 shadow-2xl shadow-slate-950/40">
             <div className="flex items-center justify-between gap-4 border-b border-white/10 pb-4">
               <div>
@@ -225,7 +315,6 @@ export const ChatPage = () => {
                 <button className="rounded-3xl bg-white/5 px-4 py-2 text-sm text-slate-200 transition hover:bg-white/10">Stop</button>
                 <button className="rounded-3xl bg-violet-500/15 px-4 py-2 text-sm font-semibold text-violet-200 transition hover:bg-violet-500/20">Regenerate</button>
               </div>
-            </div>
 
             <div className="flex flex-1 flex-col gap-5 overflow-hidden">
               <div className="scrollbar-thin max-h-[420px] space-y-4 overflow-y-auto pr-2">
@@ -271,11 +360,13 @@ export const ChatPage = () => {
                 </div>
             </div>
 
-            </div>
-          <div className="grid gap-4 md:grid-cols-3">
-          </div>
+          <div className="grid gap-4 md:grid-cols-2">
             {suggestedPrompts.map((prompt) => (
-              <button key={prompt} className="glass-panel rounded-3xl border border-white/10 bg-slate-950/80 px-5 py-4 text-left text-sm text-slate-100 transition hover:bg-white/10">
+              <button
+                key={prompt}
+                onClick={() => setMessage(prompt)}
+                className="glass-panel rounded-3xl border border-white/10 bg-slate-950/80 px-5 py-4 text-left text-sm text-slate-100 transition hover:bg-white/10"
+              >
                 {prompt}
               </button>
             ))}
