@@ -1,13 +1,13 @@
 import json
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.config.settings import settings
 from backend.database.models import ChatMessage, ChatSession, User
-from backend.database.session import get_db
+from backend.database.session import AsyncSessionLocal, get_db
 from openai import RateLimitError as OpenAIRateLimitError
 from backend.services.rag_service import OpenAIConfigError, RAGService
 from backend.utils.auth import get_current_user
@@ -16,8 +16,8 @@ router = APIRouter(prefix="/chat", tags=["AI Engine"])
 
 
 class ChatPayload(BaseModel):
-    session_id: str
-    message: str
+    session_id: str = Field(..., min_length=1, max_length=64)
+    message: str = Field(..., min_length=1, max_length=10000)
 
 
 @router.post("", status_code=status.HTTP_200_OK)
@@ -25,12 +25,12 @@ async def stream_chat_endpoint(
     payload: ChatPayload,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-):
+) -> StreamingResponse:
     result = await db.execute(select(ChatSession).where(ChatSession.id == payload.session_id, ChatSession.user_id == current_user.id))
     session = result.scalar_one_or_none()
 
     if not session:
-        session = ChatSession(id=payload.session_id, title=payload.message[:30], user_id=current_user.id)
+        session = ChatSession(id=payload.session_id, title=payload.message[:50], user_id=current_user.id)
         db.add(session)
         await db.commit()
         await db.refresh(session)
@@ -75,13 +75,15 @@ async def stream_chat_endpoint(
             yield f"data: {json.dumps({'token': f'AI service error: {str(exc)}'})}\n\n"
             return
 
-        assistant_message = ChatMessage(
-            session_id=session.id,
-            role="assistant",
-            content="".join(ai_response_accumulator).strip(),
-            citations=json.dumps(citations_meta),
-        )
-        db.add(assistant_message)
-        await db.commit()
+        # Use a fresh async session to persist the message (the request session may be closed)
+        async with AsyncSessionLocal() as save_session:
+            async with save_session.begin():
+                assistant_message = ChatMessage(
+                    session_id=session.id,
+                    role="assistant",
+                    content="".join(ai_response_accumulator).strip(),
+                    citations=json.dumps(citations_meta),
+                )
+                save_session.add(assistant_message)
 
     return StreamingResponse(event_stream_generator(), media_type="text/event-stream")
