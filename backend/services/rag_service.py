@@ -37,35 +37,70 @@ class RAGService:
             )
         return self._vector_store
 
+    def _index_text(self, text_content: str, filename: str, page: int = 1):
+        """Split text content and add chunks to the vector store."""
+        if not text_content:
+            return
+        chunks = self.text_splitter.split_text(text_content)
+        docs = [
+            Document(page_content=chunk, metadata={"source": filename, "page": page})
+            for chunk in chunks
+        ]
+        self.vector_store.add_documents(docs)
+
     def process_and_index_file(self, file_path: str, filename: str):
-        """Parses files dynamically by signature and adds chunks to the vector database"""
+        """Parses files dynamically by extension and adds chunks to the vector database"""
         ext = os.path.splitext(filename)[1].lower()
         text_content = ""
 
-        if ext == ".txt" or ext == ".md":
-            with open(file_path, "r", encoding="utf-8") as f:
+        if ext in (".txt", ".md"):
+            with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
                 text_content = f.read()
+            self._index_text(text_content, filename)
         elif ext == ".pdf":
             from pypdf import PdfReader
             reader = PdfReader(file_path)
             for page_num, page in enumerate(reader.pages):
                 page_text = page.extract_text()
                 if page_text:
-                    chunks = self.text_splitter.split_text(page_text)
-                    docs = [
-                        Document(
-                            page_content=chunk,
-                            metadata={"source": filename, "page": page_num + 1}
-                        ) for chunk in chunks
-                    ]
-                    self.vector_store.add_documents(docs)
-            return
-        # Extensible context for DOCX, CSV, Excel can follow here
-        
-        if text_content:
-            chunks = self.text_splitter.split_text(text_content)
-            docs = [Document(page_content=chunk, metadata={"source": filename, "page": 1}) for chunk in chunks]
-            self.vector_store.add_documents(docs)
+                    self._index_text(page_text, filename, page=page_num + 1)
+        elif ext == ".docx":
+            import docx2txt
+            text_content = docx2txt.process(file_path)
+            self._index_text(text_content, filename)
+        elif ext == ".csv":
+            import csv
+            rows = []
+            with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+                reader = csv.reader(f)
+                for row in reader:
+                    if row:
+                        rows.append(", ".join(cell.strip() for cell in row))
+            text_content = "\n".join(rows)
+            self._index_text(text_content, filename)
+        elif ext in (".xlsx", ".xls"):
+            import pandas as pd
+            excel_file = pd.ExcelFile(file_path)
+            all_text = []
+            for sheet_name in excel_file.sheet_names:
+                df = excel_file.parse(sheet_name)
+                sheet_lines = [f"Sheet: {sheet_name}"]
+                sheet_lines.append("\t".join(str(col) for col in df.columns))
+                for _, row in df.iterrows():
+                    values = [str(v) for v in row.tolist() if str(v) != "nan"]
+                    if values:
+                        sheet_lines.append("\t".join(values))
+                all_text.append("\n".join(sheet_lines))
+            text_content = "\n\n".join(all_text)
+            self._index_text(text_content, filename)
+        else:
+            # Fallback: try reading as plain text
+            try:
+                with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+                    text_content = f.read()
+                self._index_text(text_content, filename)
+            except Exception:
+                return
 
     def query_pipeline(self, query: str, chat_history: List[Dict[str, str]]) -> Generator[Dict[str, Any], None, None]:
         """
