@@ -288,6 +288,7 @@ export const ChatPage = () => {
             <div className="mt-4 grid gap-3">
               <div className="rounded-3xl bg-slate-900/70 px-4 py-3 text-sm text-slate-200">Files indexed: 82</div>
               <div className="rounded-3xl bg-slate-900/70 px-4 py-3 text-sm text-slate-200">Model: GPT-5</div>
+            </div>
           </div>
         </aside>
 
@@ -303,6 +304,7 @@ export const ChatPage = () => {
                 <span className="rounded-3xl bg-slate-900/80 px-4 py-2 text-sm text-slate-300">Agent mode</span>
                 <span className="rounded-3xl bg-slate-900/80 px-4 py-2 text-sm text-slate-300">Deep research</span>
               </div>
+            </div>
           </div>
 
           <div className="glass-panel flex min-h-[560px] flex-col gap-5 rounded-[32px] border border-white/10 bg-slate-950/85 p-6 shadow-2xl shadow-slate-950/40">
@@ -315,6 +317,7 @@ export const ChatPage = () => {
                 <button className="rounded-3xl bg-white/5 px-4 py-2 text-sm text-slate-200 transition hover:bg-white/10">Stop</button>
                 <button className="rounded-3xl bg-violet-500/15 px-4 py-2 text-sm font-semibold text-violet-200 transition hover:bg-violet-500/20">Regenerate</button>
               </div>
+            </div>
 
             <div className="flex flex-1 flex-col gap-5 overflow-hidden">
               <div className="scrollbar-thin max-h-[420px] space-y-4 overflow-y-auto pr-2">
@@ -358,7 +361,9 @@ export const ChatPage = () => {
                     {isLoading ? "Generating..." : "Send message"}
                   </button>
                 </div>
+              </div>
             </div>
+          </div>
 
           <div className="grid gap-4 md:grid-cols-2">
             {suggestedPrompts.map((prompt) => (
@@ -376,3 +381,5 @@ export const ChatPage = () => {
     </main>
   );
 };
+
+
