@@ -1,4 +1,3 @@
-
 pipeline {
     agent any
 
@@ -6,19 +5,29 @@ pipeline {
 
         stage('Build') {
             steps {
-                echo 'Building application...'
+                echo 'Installing Python dependencies...'
+
+                bat '''
+                    python --version
+                    python -m pip install --upgrade pip
+                    python -m pip install -r backend\\requirements.txt
+                '''
             }
         }
 
         stage('Test') {
             steps {
-                echo 'Running tests...'
+                echo 'Running Python tests...'
+
+                bat '''
+                    python -m compileall backend
+                '''
             }
         }
 
         stage('Deploy') {
             steps {
-                echo 'Deploying application...'
+                echo 'Deployment will be configured later...'
             }
         }
     }
